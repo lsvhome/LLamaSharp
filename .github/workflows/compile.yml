@@ -399,6 +399,130 @@ jobs:
                 name: mtmd-bin-linux-vulkan-x64.so
                 if-no-files-found: error
 
+  compile-sycl:
+      name: Compile (sycl) - ${{ matrix.os }}
+      strategy:
+          fail-fast: false
+          matrix:
+              os: [
+                  ubuntu-22.04,
+                  windows-latest
+              ]
+      env:
+          VULKAN_VERSION: 1.4.335.0
+      runs-on: ${{ matrix.os }}
+      steps:
+          - name: Clone
+            id: checkout
+            uses: actions/checkout@v6
+            with:
+                repository: ggerganov/llama.cpp
+                fetch-depth: 0
+                ref: '${{ github.event.inputs.llama_cpp_commit }}'
+
+          - name: Download dependencies - Linux
+            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            run: |
+                wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+                sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list http://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+                sudo apt update
+                sudo apt install vulkan-sdk
+          - name: Download dependencies - Windows
+            id: get_vulkan
+            if: ${{ matrix.os == 'windows-latest' }}
+            run: |
+                curl.exe -o $env:RUNNER_TEMP/VulkanSDK-Installer.exe -L "https://sdk.lunarg.com/sdk/download/${env:VULKAN_VERSION}/windows/vulkansdk-windows-X64-${env:VULKAN_VERSION}.exe"
+                & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+                Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\${env:VULKAN_VERSION}"
+                Add-Content $env:GITHUB_PATH "C:\VulkanSDK\${env:VULKAN_VERSION}\bin"
+          - name: Build (Windows)
+            id: cmake_build
+            if: ${{ matrix.os == 'windows-latest' }}
+            run: |
+                mkdir build
+                cd build
+                cmake .. ${{ env.COMMON_DEFINE }} -DGGML_VULKAN=ON
+                cmake --build . --config Release -j ${env:NUMBER_OF_PROCESSORS} --target ggml ggml-base ggml-vulkan llama mtmd
+                ls -R
+          - name: Build (Linux)
+            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            run: |
+                mkdir build
+                cd build
+                cmake .. ${{ env.COMMON_DEFINE }} ${{ env.LINUX_RPATH_DEFINE }} -DGGML_VULKAN=ON
+                cmake --build . --config Release -j $(nproc) --target ggml ggml-base ggml-vulkan llama mtmd
+                ls -R
+          - name: Upload llama artifacts (Windows)
+            if: ${{ matrix.os == 'windows-latest' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: .\build\bin\Release\llama.dll
+                name: llama-bin-win-vulkan-x64.dll
+                if-no-files-found: error
+          - name: Upload ggml artifacts (Windows)
+            if: ${{ matrix.os == 'windows-latest' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: .\build\bin\Release\ggml.dll
+                name: ggml-bin-win-vulkan-x64.dll
+                if-no-files-found: error
+          - name: Upload ggml-base artifacts (Windows)
+            if: ${{ matrix.os == 'windows-latest' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: .\build\bin\Release\ggml-base.dll
+                name: ggml-base-bin-win-vulkan-x64.dll
+                if-no-files-found: error
+          - name: Upload ggml-vulkan artifacts (Windows)
+            if: ${{ matrix.os == 'windows-latest' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: .\build\bin\Release\ggml-vulkan.dll
+                name: ggml-vulkan-bin-win-vulkan-x64.dll
+                if-no-files-found: error
+          - name: Upload mtmd artifacts (Windows)
+            if: ${{ matrix.os == 'windows-latest' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: .\build\bin\Release\mtmd.dll
+                name: mtmd-bin-win-vulkan-x64.dll
+                if-no-files-found: error
+          - name: Upload llama artifacts (Linux)
+            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: ./build/bin/libllama.so
+                name: llama-bin-linux-vulkan-x64.so
+                if-no-files-found: error
+          - name: Upload ggml artifacts (Linux)
+            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            uses: actions/upload-artifact@v4
+            with:
+              path: ./build/bin/libggml.so
+              name: ggml-bin-linux-vulkan-x64.so
+              if-no-files-found: error
+          - name: Upload ggml-base artifacts (Linux)
+            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: ./build/bin/libggml-base.so
+                name: ggml-base-bin-linux-vulkan-x64.so
+                if-no-files-found: error
+          - name: Upload ggml-vulkan artifacts (Linux)
+            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: ./build/bin/libggml-vulkan.so
+                name: ggml-vulkan-bin-linux-vulkan-x64.so
+                if-no-files-found: error
+          - name: Upload mtmd artifacts (Linux)
+            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            uses: actions/upload-artifact@v4
+            with:
+                path: ./build/bin/libmtmd.so
+                name: mtmd-bin-linux-vulkan-x64.so
+                if-no-files-found: error
+
   compile-cublas:
     name: Compile (cublas)
     strategy:
