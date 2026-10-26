@@ -405,11 +405,19 @@ jobs:
           fail-fast: false
           matrix:
               os: [
-                  ubuntu-22.04,
+                  ubuntu-24.04,
                   windows-latest
               ]
       env:
-          VULKAN_VERSION: 1.4.335.0
+          # Linux oneAPI
+          ONEAPI_ROOT: /opt/intel/oneapi/
+          ONEAPI_INSTALLER_VERSION: "2025.3.3"
+          LEVEL_ZERO_VERSION: "1.28.2"
+          LEVEL_ZERO_UBUNTU_VERSION: "u24.04"
+          # Windows oneAPI
+          WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/b60765d1-2b85-4e85-86b6-cb0e9563a699/intel-deep-learning-essentials-2025.3.3.18_offline.exe
+          WINDOWS_DPCPP_MKL: intel.oneapi.win.cpp-dpcpp-common:intel.oneapi.win.mkl.devel:intel.oneapi.win.dnnl:intel.oneapi.win.tbb.devel
+          LEVEL_ZERO_SDK_URL: https://github.com/oneapi-src/level-zero/releases/download/v1.28.2/level-zero-win-sdk-1.28.2.zip
       runs-on: ${{ matrix.os }}
       steps:
           - name: Clone
@@ -421,106 +429,108 @@ jobs:
                 ref: '${{ github.event.inputs.llama_cpp_commit }}'
 
           - name: Download dependencies - Linux
-            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            if: ${{ matrix.os == 'ubuntu-24.04' }}
+            shell: bash
             run: |
-                wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
-                sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list http://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
-                sudo apt update
-                sudo apt install vulkan-sdk
+                cd /tmp
+                wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/56f7923a-adb8-43f3-8b02-2b60fcac8cab/intel-deep-learning-essentials-2025.3.3.16_offline.sh -O intel-deep-learning-essentials_offline.sh
+                sudo bash intel-deep-learning-essentials_offline.sh -s -a --silent --eula accept
+                wget -q "https://github.com/oneapi-src/level-zero/releases/download/v${{ env.LEVEL_ZERO_VERSION }}/level-zero_${{ env.LEVEL_ZERO_VERSION }}%2B${{ env.LEVEL_ZERO_UBUNTU_VERSION }}_amd64.deb" -O level-zero.deb
+                wget -q "https://github.com/oneapi-src/level-zero/releases/download/v${{ env.LEVEL_ZERO_VERSION }}/level-zero-devel_${{ env.LEVEL_ZERO_VERSION }}%2B${{ env.LEVEL_ZERO_UBUNTU_VERSION }}_amd64.deb" -O level-zero-devel.deb
+                sudo apt-get install -y ./level-zero.deb ./level-zero-devel.deb
           - name: Download dependencies - Windows
-            id: get_vulkan
             if: ${{ matrix.os == 'windows-latest' }}
             run: |
-                curl.exe -o $env:RUNNER_TEMP/VulkanSDK-Installer.exe -L "https://sdk.lunarg.com/sdk/download/${env:VULKAN_VERSION}/windows/vulkansdk-windows-X64-${env:VULKAN_VERSION}.exe"
-                & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
-                Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\${env:VULKAN_VERSION}"
-                Add-Content $env:GITHUB_PATH "C:\VulkanSDK\${env:VULKAN_VERSION}\bin"
+                .\scripts\install-oneapi.bat ${{ env.WINDOWS_BASEKIT_URL }} ${{ env.WINDOWS_DPCPP_MKL }}
+                pwsh -Command "Invoke-WebRequest -Uri '${{ env.LEVEL_ZERO_SDK_URL }}' -OutFile 'level-zero-win-sdk.zip'; Expand-Archive -Path 'level-zero-win-sdk.zip' -DestinationPath 'C:/level-zero-sdk' -Force"
+                echo "LEVEL_ZERO_V1_SDK_PATH=C:/level-zero-sdk" >> $env:GITHUB_ENV
           - name: Build (Windows)
             id: cmake_build
             if: ${{ matrix.os == 'windows-latest' }}
             run: |
                 mkdir build
                 cd build
-                cmake .. ${{ env.COMMON_DEFINE }} -DGGML_VULKAN=ON
-                cmake --build . --config Release -j ${env:NUMBER_OF_PROCESSORS} --target ggml ggml-base ggml-vulkan llama mtmd
+                cmake .. ${{ env.COMMON_DEFINE }} -DGGML_SYCL=ON -DCMAKE_CXX_COMPILER=icx
+                cmake --build . --config Release -j ${env:NUMBER_OF_PROCESSORS} --target ggml ggml-base ggml-sycl llama mtmd
                 ls -R
           - name: Build (Linux)
-            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            if: ${{ matrix.os == 'ubuntu-24.04' }}
             run: |
+                source /opt/intel/oneapi/setvars.sh
                 mkdir build
                 cd build
-                cmake .. ${{ env.COMMON_DEFINE }} ${{ env.LINUX_RPATH_DEFINE }} -DGGML_VULKAN=ON
-                cmake --build . --config Release -j $(nproc) --target ggml ggml-base ggml-vulkan llama mtmd
+                cmake .. ${{ env.COMMON_DEFINE }} ${{ env.LINUX_RPATH_DEFINE }} -DGGML_SYCL=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
+                cmake --build . --config Release -j $(nproc) --target ggml ggml-base ggml-sycl llama mtmd
                 ls -R
           - name: Upload llama artifacts (Windows)
             if: ${{ matrix.os == 'windows-latest' }}
             uses: actions/upload-artifact@v4
             with:
                 path: .\build\bin\Release\llama.dll
-                name: llama-bin-win-vulkan-x64.dll
+                name: llama-bin-win-sycl-x64.dll
                 if-no-files-found: error
           - name: Upload ggml artifacts (Windows)
             if: ${{ matrix.os == 'windows-latest' }}
             uses: actions/upload-artifact@v4
             with:
                 path: .\build\bin\Release\ggml.dll
-                name: ggml-bin-win-vulkan-x64.dll
+                name: ggml-bin-win-sycl-x64.dll
                 if-no-files-found: error
           - name: Upload ggml-base artifacts (Windows)
             if: ${{ matrix.os == 'windows-latest' }}
             uses: actions/upload-artifact@v4
             with:
                 path: .\build\bin\Release\ggml-base.dll
-                name: ggml-base-bin-win-vulkan-x64.dll
+                name: ggml-base-bin-win-sycl-x64.dll
                 if-no-files-found: error
-          - name: Upload ggml-vulkan artifacts (Windows)
+          - name: Upload ggml-sycl artifacts (Windows)
             if: ${{ matrix.os == 'windows-latest' }}
             uses: actions/upload-artifact@v4
             with:
-                path: .\build\bin\Release\ggml-vulkan.dll
-                name: ggml-vulkan-bin-win-vulkan-x64.dll
+                path: .\build\bin\Release\ggml-sycl.dll
+                name: ggml-sycl-bin-win-sycl-x64.dll
                 if-no-files-found: error
           - name: Upload mtmd artifacts (Windows)
             if: ${{ matrix.os == 'windows-latest' }}
             uses: actions/upload-artifact@v4
             with:
                 path: .\build\bin\Release\mtmd.dll
-                name: mtmd-bin-win-vulkan-x64.dll
+                name: mtmd-bin-win-sycl-x64.dll
                 if-no-files-found: error
           - name: Upload llama artifacts (Linux)
-            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            if: ${{ matrix.os == 'ubuntu-24.04' }}
             uses: actions/upload-artifact@v4
             with:
                 path: ./build/bin/libllama.so
-                name: llama-bin-linux-vulkan-x64.so
+                name: llama-bin-linux-sycl-x64.so
                 if-no-files-found: error
           - name: Upload ggml artifacts (Linux)
-            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            if: ${{ matrix.os == 'ubuntu-24.04' }}
             uses: actions/upload-artifact@v4
             with:
               path: ./build/bin/libggml.so
-              name: ggml-bin-linux-vulkan-x64.so
+              name: ggml-bin-linux-sycl-x64.so
               if-no-files-found: error
           - name: Upload ggml-base artifacts (Linux)
-            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            if: ${{ matrix.os == 'ubuntu-24.04' }}
             uses: actions/upload-artifact@v4
             with:
                 path: ./build/bin/libggml-base.so
-                name: ggml-base-bin-linux-vulkan-x64.so
+                name: ggml-base-bin-linux-sycl-x64.so
                 if-no-files-found: error
-          - name: Upload ggml-vulkan artifacts (Linux)
-            if: ${{ matrix.os == 'ubuntu-22.04' }}
+          - name: Upload ggml-sycl artifacts (Linux)
+            if: ${{ matrix.os == 'ubuntu-24.04' }}
             uses: actions/upload-artifact@v4
             with:
-                path: ./build/bin/libggml-vulkan.so
-                name: ggml-vulkan-bin-linux-vulkan-x64.so
+                path: ./build/bin/libggml-sycl.so
+                name: ggml-sycl-bin-linux-sycl-x64.so
                 if-no-files-found: error
           - name: Upload mtmd artifacts (Linux)
-            if: ${{ matrix.os == 'ubuntu-22.04' }}
+            if: ${{ matrix.os == 'ubuntu-24.04' }}
             uses: actions/upload-artifact@v4
             with:
                 path: ./build/bin/libmtmd.so
-                name: mtmd-bin-linux-vulkan-x64.so
+                name: mtmd-bin-linux-sycl-x64.so
                 if-no-files-found: error
 
   compile-cublas:
@@ -804,6 +814,7 @@ jobs:
       "compile-windows",
       "compile-windows-arm64",
       "compile-vulkan",
+      "compile-sycl",
       "compile-cublas",
       "compile-macos",
       "compile-android"
@@ -817,7 +828,7 @@ jobs:
       - name: Rearrange Files
         run: |
           # Make all directories at once
-          mkdir --parents deps/{noavx,avx,avx2,avx512,linux-arm64,musl-noavx,musl-avx,musl-avx2,musl-avx512,osx-arm64,osx-x64,osx-x64-rosetta2,cu12.4.0,cu13.0.0,vulkan,android-arm64-v8a,android-x86,android-x86_64,win-arm64}
+          mkdir --parents deps/{noavx,avx,avx2,avx512,linux-arm64,musl-noavx,musl-avx,musl-avx2,musl-avx512,osx-arm64,osx-x64,osx-x64-rosetta2,cu12.4.0,cu13.0.0,vulkan,sycl,android-arm64-v8a,android-x86,android-x86_64,win-arm64}
 
           # Linux
           cp artifacts/ggml-bin-linux-noavx-x64.so/libggml.so           deps/noavx/libggml.so
@@ -968,6 +979,21 @@ jobs:
           cp artifacts/ggml-cuda-bin-linux-cublas-cu13.0.0-x64.so/libggml-cuda.so    deps/cu13.0.0/libggml-cuda.so
           cp artifacts/llama-bin-linux-cublas-cu13.0.0-x64.so/libllama.so            deps/cu13.0.0/libllama.so
           cp artifacts/mtmd-bin-linux-cublas-cu13.0.0-x64.so/libmtmd.so              deps/cu13.0.0/libmtmd.so
+          # Windows SYCL
+          cp artifacts/ggml-bin-win-sycl-x64.dll/ggml.dll               deps/sycl/ggml.dll
+          cp artifacts/ggml-base-bin-win-sycl-x64.dll/ggml-base.dll     deps/sycl/ggml-base.dll
+          cp artifacts/ggml-sycl-bin-win-sycl-x64.dll/ggml-sycl.dll     deps/sycl/ggml-sycl.dll
+          cp artifacts/llama-bin-win-sycl-x64.dll/llama.dll             deps/sycl/llama.dll
+          cp artifacts/mtmd-bin-win-sycl-x64.dll/mtmd.dll               deps/sycl/mtmd.dll
+
+          # Linux SYCL
+          cp artifacts/ggml-bin-linux-sycl-x64.so/libggml.so                deps/sycl/libggml.so
+          cp artifacts/ggml-base-bin-linux-sycl-x64.so/libggml-base.so      deps/sycl/libggml-base.so
+          cp artifacts/ggml-sycl-bin-linux-sycl-x64.so/libggml-sycl.so      deps/sycl/libggml-sycl.so
+          cp artifacts/llama-bin-linux-sycl-x64.so/libllama.so              deps/sycl/libllama.so
+          cp artifacts/mtmd-bin-linux-sycl-x64.so/libmtmd.so                deps/sycl/libmtmd.so
+          
+
 
           # Windows Vulkan
           cp artifacts/ggml-bin-win-vulkan-x64.dll/ggml.dll               deps/vulkan/ggml.dll
