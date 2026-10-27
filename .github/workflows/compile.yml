@@ -437,65 +437,15 @@ jobs:
                 wget -q "https://github.com/oneapi-src/level-zero/releases/download/v${{ env.LEVEL_ZERO_VERSION }}/level-zero_${{ env.LEVEL_ZERO_VERSION }}%2B${{ env.LEVEL_ZERO_UBUNTU_VERSION }}_amd64.deb" -O level-zero.deb
                 wget -q "https://github.com/oneapi-src/level-zero/releases/download/v${{ env.LEVEL_ZERO_VERSION }}/level-zero-devel_${{ env.LEVEL_ZERO_VERSION }}%2B${{ env.LEVEL_ZERO_UBUNTU_VERSION }}_amd64.deb" -O level-zero-devel.deb
                 sudo apt-get install -y ./level-zero.deb ./level-zero-devel.deb
-          # - name: Download dependencies - Windows
-          #   if: ${{ matrix.os == 'windows-latest' }}
-          #   run: |
-          #       .\scripts\install-oneapi.bat ${{ env.WINDOWS_BASEKIT_URL }} ${{ env.WINDOWS_DPCPP_MKL }}
-          #       pwsh -Command "Invoke-WebRequest -Uri '${{ env.LEVEL_ZERO_SDK_URL }}' -OutFile 'level-zero-win-sdk.zip'; Expand-Archive -Path 'level-zero-win-sdk.zip' -DestinationPath 'C:/level-zero-sdk' -Force"
-          #       echo "LEVEL_ZERO_V1_SDK_PATH=C:/level-zero-sdk" >> $env:GITHUB_ENV
-          # - name: Build (Windows)
-          #   id: cmake_build
-          #   if: ${{ matrix.os == 'windows-latest' }}
-          #   run: |
-          #       mkdir build
-          #       cd build
-          #       cmake .. ${{ env.COMMON_DEFINE }} -DGGML_SYCL=ON -DCMAKE_CXX_COMPILER=icx
-          #       cmake --build . --config Release -j ${env:NUMBER_OF_PROCESSORS} --target ggml ggml-base ggml-sycl llama mtmd
-          #       ls -R
           - name: Build (Linux)
             if: ${{ matrix.os == 'ubuntu-24.04' }}
             run: |
                 source /opt/intel/oneapi/setvars.sh
                 mkdir build
                 cd build
-                cmake .. ${{ env.COMMON_DEFINE }} ${{ env.LINUX_RPATH_DEFINE }} -DGGML_SYCL=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
+                cmake .. ${{ env.COMMON_DEFINE }} ${{ env.LINUX_RPATH_DEFINE }} -DBUILD_SHARED_LIBS=ON -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DGGML_SYCL=ON -DGGML_SYCL_TARGET=INTEL -DGGML_SYCL_F16=ON
                 cmake --build . --config Release -j $(nproc) --target ggml ggml-base ggml-sycl llama mtmd
                 ls -R
-          # - name: Upload llama artifacts (Windows)
-          #   if: ${{ matrix.os == 'windows-latest' }}
-          #   uses: actions/upload-artifact@v4
-          #   with:
-          #       path: .\build\bin\Release\llama.dll
-          #       name: llama-bin-win-sycl-x64.dll
-          #       if-no-files-found: error
-          # - name: Upload ggml artifacts (Windows)
-          #   if: ${{ matrix.os == 'windows-latest' }}
-          #   uses: actions/upload-artifact@v4
-          #   with:
-          #       path: .\build\bin\Release\ggml.dll
-          #       name: ggml-bin-win-sycl-x64.dll
-          #       if-no-files-found: error
-          # - name: Upload ggml-base artifacts (Windows)
-          #   if: ${{ matrix.os == 'windows-latest' }}
-          #   uses: actions/upload-artifact@v4
-          #   with:
-          #       path: .\build\bin\Release\ggml-base.dll
-          #       name: ggml-base-bin-win-sycl-x64.dll
-          #       if-no-files-found: error
-          # - name: Upload ggml-sycl artifacts (Windows)
-          #   if: ${{ matrix.os == 'windows-latest' }}
-          #   uses: actions/upload-artifact@v4
-          #   with:
-          #       path: .\build\bin\Release\ggml-sycl.dll
-          #       name: ggml-sycl-bin-win-sycl-x64.dll
-          #       if-no-files-found: error
-          # - name: Upload mtmd artifacts (Windows)
-          #   if: ${{ matrix.os == 'windows-latest' }}
-          #   uses: actions/upload-artifact@v4
-          #   with:
-          #       path: .\build\bin\Release\mtmd.dll
-          #       name: mtmd-bin-win-sycl-x64.dll
-          #       if-no-files-found: error
           - name: Upload llama artifacts (Linux)
             if: ${{ matrix.os == 'ubuntu-24.04' }}
             uses: actions/upload-artifact@v4
