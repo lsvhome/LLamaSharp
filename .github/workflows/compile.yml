@@ -928,12 +928,6 @@ jobs:
           cp artifacts/ggml-cuda-bin-linux-cublas-cu13.0.0-x64.so/libggml-cuda.so    deps/cu13.0.0/libggml-cuda.so
           cp artifacts/llama-bin-linux-cublas-cu13.0.0-x64.so/libllama.so            deps/cu13.0.0/libllama.so
           cp artifacts/mtmd-bin-linux-cublas-cu13.0.0-x64.so/libmtmd.so              deps/cu13.0.0/libmtmd.so
-          # Windows SYCL
-          cp artifacts/ggml-bin-win-sycl-x64.dll/ggml.dll               deps/sycl/ggml.dll
-          cp artifacts/ggml-base-bin-win-sycl-x64.dll/ggml-base.dll     deps/sycl/ggml-base.dll
-          cp artifacts/ggml-sycl-bin-win-sycl-x64.dll/ggml-sycl.dll     deps/sycl/ggml-sycl.dll
-          cp artifacts/llama-bin-win-sycl-x64.dll/llama.dll             deps/sycl/llama.dll
-          cp artifacts/mtmd-bin-win-sycl-x64.dll/mtmd.dll               deps/sycl/mtmd.dll
 
           # Linux SYCL
           cp artifacts/ggml-bin-linux-sycl-x64.so/libggml.so                deps/sycl/libggml.so
@@ -941,8 +935,6 @@ jobs:
           cp artifacts/ggml-sycl-bin-linux-sycl-x64.so/libggml-sycl.so      deps/sycl/libggml-sycl.so
           cp artifacts/llama-bin-linux-sycl-x64.so/libllama.so              deps/sycl/libllama.so
           cp artifacts/mtmd-bin-linux-sycl-x64.so/libmtmd.so                deps/sycl/libmtmd.so
-          
-
 
           # Windows Vulkan
           cp artifacts/ggml-bin-win-vulkan-x64.dll/ggml.dll               deps/vulkan/ggml.dll
