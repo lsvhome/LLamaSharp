@@ -758,8 +758,15 @@ jobs:
     name: "Gather Binaries"
     if: ${{ always() }}
     needs: [
+      "compile-linux",
+      "compile-musl",
+      "compile-windows",
+      "compile-windows-arm64",
       "compile-vulkan",
-      "compile-sycl"
+      "compile-sycl",
+      "compile-cublas",
+      "compile-macos",
+      "compile-android"
     ]
     steps:
       - uses: actions/download-artifact@v4
